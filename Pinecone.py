@@ -1,14 +1,18 @@
 import os
 import re
 
+from dotenv import load_dotenv
 from pinecone import Pinecone, ServerlessSpec
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from unicodedata import category
 
+load_dotenv()
+
 api_key=os.getenv("GEMINI_API_KEY")
+pinecone_api_key=os.getenv("PINECONE_API_KEY")
 os.environ["GOOGLE_API_KEY"]=api_key
-PINECONE_API_KEY="pcsk_6eGeyp_2GFpNjLN82RXDmZMttrH3Q6RkihuYi4WyeBRXfQxUJfPC5wWJWnzQTkBvavWMpw"
+PINECONE_API_KEY=pinecone_api_key
 
 # Connect to pinecone
 pc = Pinecone(api_key=PINECONE_API_KEY)
