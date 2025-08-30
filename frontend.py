@@ -1,97 +1,108 @@
 import streamlit as st
 import requests
-import uuid
 
 # --- Configuration ---
-BACKEND_URL = "http://127.0.0.1:8500"  # URL of your FastAPI backend
-START_CHAT_URL = f"{BACKEND_URL}"
+BACKEND_URL = "http://127.0.0.1:8500"  # Adjust to your FastAPI URL
+TOKEN_URL = f"{BACKEND_URL}/token"
+START_CHAT_URL = f"{BACKEND_URL}/"
 CHATBOT_URL = f"{BACKEND_URL}/chatbot"
 
 # --- Page Setup ---
 st.set_page_config(
-    page_title="🔥 Rude Motivational Speaker",
-    page_icon="🔥",
+    page_title="🧠 Data Science Interview Bot",
+    page_icon="🧠",
     layout="centered"
 )
 
-# --- Session State Initialization ---
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = None
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'chat_started' not in st.session_state:
-    st.session_state.chat_started = False
+# --- Session State ---
+for key in ["session_id", "chat_history", "chat_started", "access_token", "logged_in"]:
+    if key not in st.session_state:
+        st.session_state[key] = None if key in ["session_id", "access_token"] else False
+        if key == "chat_history":
+            st.session_state[key] = []
 
-# --- UI Components ---
-st.title("Rude Motivational Speaker")
-st.markdown("Feeling down? Need a lil push? Great Place but nothings sweet here friend.")
+# --- Sidebar: Login ---
+with st.sidebar:
+    st.header("Login")
+    username = st.text_input("Username", value="allkeeey")
+    password = st.text_input("Password", type="password", value="Sudhanshu12345")
+    if st.button("Login"):
+        try:
+            response = requests.post(
+                TOKEN_URL,
+                data={"username": username, "password": password},
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                st.session_state.access_token = data["access_token"]
+                st.session_state.logged_in = True
+                st.success("✅ Logged in successfully!")
+            else:
+                st.error("❌ Invalid username or password")
+        except requests.exceptions.ConnectionError:
+            st.error("🚫 Backend not running or unreachable.")
 
-# --- Functions ---
-def start_new_chat():
-    """Starts a new chat session by calling the backend."""
-    try:
-        response = requests.post(START_CHAT_URL)
-        if response.status_code == 200:
-            data = response.json()
-            st.session_state.session_id = data['session_id']
-            st.session_state.chat_history = []
-            st.session_state.chat_started = True
-            st.success("New chat session started! Now, what's your problem?")
-        else:
-            st.error("Failed to start a new chat. Is the backend running?")
-    except requests.exceptions.ConnectionError:
-        st.error("Connection failed. Please make sure the backend is running.")
+    if st.session_state.logged_in:
+        if st.button("Start New Interview"):
+            try:
+                response = requests.post(
+                    START_CHAT_URL,
+                    headers={"Authorization": f"Bearer {st.session_state.access_token}"}
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    st.session_state.session_id = data["session_id"]
+                    st.session_state.chat_history = []
+                    st.session_state.chat_started = True
+                    st.success("🆕 New interview started!")
+                else:
+                    st.error("Failed to start chat.")
+            except requests.exceptions.ConnectionError:
+                st.error("Backend connection error.")
+
+# --- Display Chat ---
+st.title("🧠 Data Science Interview Bot")
+st.markdown("An AI-powered mock interviewer that tests your Data Science knowledge.")
 
 
 def display_chat():
-    """Displays the chat history."""
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
 
 def handle_user_input(prompt):
-    """Handles user input and gets a response from the chatbot."""
-    # Add user message to chat history
+    # Add user message
     st.session_state.chat_history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     # Get bot response
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
         try:
             response = requests.post(
                 CHATBOT_URL,
-                json={"session_id": st.session_state.session_id, "message": prompt}
+                json={"session_id": st.session_state.session_id, "message": prompt},
+                headers={"Authorization": f"Bearer {st.session_state.access_token}"}
             )
             if response.status_code == 200:
-                full_response = response.json().get("response", "I... I have nothing to say. You've broken me.")
+                bot_reply = response.json().get("response", "No response.")
             else:
-                full_response = "I'm not talking to you right now. Try again later."
+                bot_reply = f"Error: {response.status_code} - {response.text}"
         except requests.exceptions.ConnectionError:
-            full_response = "Looks like my server is as lazy as you are. It's not running."
+            bot_reply = "🚫 Backend not running."
 
-        message_placeholder.markdown(full_response)
+        st.markdown(bot_reply)
 
-    st.session_state.chat_history.append({"role": "assistant", "content": full_response})
+    st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
 
 
-# --- Main App Logic ---
-if not st.session_state.chat_started:
-    if st.button("Start a New Chat"):
-        start_new_chat()
-else:
+if st.session_state.logged_in and st.session_state.chat_started:
     display_chat()
-
-    if prompt := st.chat_input("What do you want?"):
+    if prompt := st.chat_input("Your answer..."):
         handle_user_input(prompt)
-
-# --- Sidebar for additional controls ---
-with st.sidebar:
-    st.header("Controls")
-    if st.button("Start a New Conversation"):
-        start_new_chat()
-    st.markdown("---")
-    st.info("Your chat history is session-based and will be lost if you close this tab.")
+elif not st.session_state.logged_in:
+    st.warning("Please login from the sidebar to start your interview.")
+elif st.session_state.logged_in and not st.session_state.chat_started:
+    st.info("Click 'Start New Interview' in the sidebar to begin.")
